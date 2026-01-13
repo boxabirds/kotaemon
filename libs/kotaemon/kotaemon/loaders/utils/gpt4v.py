@@ -8,6 +8,37 @@ from decouple import config
 logger = logging.getLogger(__name__)
 
 
+def _get_vlm_config():
+    """Get VLM configuration, supporting both Azure and local (Ollama/OpenAI) endpoints.
+
+    Configuration is determined by environment variables:
+    - Azure mode: When AZURE_OPENAI_API_KEY is set and KH_VLM_MODEL is not set
+    - Local mode: When KH_VLM_MODEL is set (for Ollama, vLLM, LM Studio, etc.)
+
+    Returns:
+        dict with 'headers' and 'model' keys
+    """
+    azure_api_key = config("AZURE_OPENAI_API_KEY", default="")
+    local_vlm_model = config("KH_VLM_MODEL", default="")
+
+    if azure_api_key and not local_vlm_model:
+        # Azure mode - model is embedded in endpoint URL
+        return {
+            "headers": {"Content-Type": "application/json", "api-key": azure_api_key},
+            "model": None,
+        }
+    else:
+        # Local/OpenAI-compatible mode (Ollama, vLLM, LM Studio, etc.)
+        api_key = config("OPENAI_API_KEY", default="ollama")
+        return {
+            "headers": {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            "model": local_vlm_model or "gpt-4o",
+        }
+
+
 def generate_gpt4v(
     endpoint: str,
     images: str | List[str],
@@ -15,9 +46,8 @@ def generate_gpt4v(
     max_tokens: int = 512,
     max_images: int = 10,
 ) -> str:
-    # OpenAI API Key
-    api_key = config("AZURE_OPENAI_API_KEY", default="")
-    headers = {"Content-Type": "application/json", "api-key": api_key}
+    vlm_config = _get_vlm_config()
+    headers = vlm_config["headers"]
 
     if isinstance(images, str):
         images = [images]
@@ -42,6 +72,10 @@ def generate_gpt4v(
         "temperature": 0,
     }
 
+    # Add model for non-Azure endpoints (OpenAI-compatible APIs require it)
+    if vlm_config["model"]:
+        payload["model"] = vlm_config["model"]
+
     if len(images) > max_images:
         print(f"Truncated to {max_images} images (original {len(images)} images")
 
@@ -65,9 +99,8 @@ def stream_gpt4v(
     max_tokens: int = 512,
     max_images: int = 10,
 ) -> Any:
-    # OpenAI API Key
-    api_key = config("AZURE_OPENAI_API_KEY", default="")
-    headers = {"Content-Type": "application/json", "api-key": api_key}
+    vlm_config = _get_vlm_config()
+    headers = vlm_config["headers"]
 
     if isinstance(images, str):
         images = [images]
@@ -93,6 +126,11 @@ def stream_gpt4v(
         "logprobs": True,
         "temperature": 0,
     }
+
+    # Add model for non-Azure endpoints (OpenAI-compatible APIs require it)
+    if vlm_config["model"]:
+        payload["model"] = vlm_config["model"]
+
     if len(images) > max_images:
         print(f"Truncated to {max_images} images (original {len(images)} images")
     try:
