@@ -187,10 +187,7 @@ class GraphRAGRetrieverPipeline(BaseFileIndexRetriever):
         }
 
     def _build_graph_search(self):
-        assert (
-            len(self.file_ids) <= 1
-        ), "GraphRAG retriever only supports one file_id at a time"
-
+        # All files in a GraphRAG collection share the same graph_id, so just use the first
         file_id = self.file_ids[0]
         # retrieve the graph_id from the index
         with Session(engine) as session:
